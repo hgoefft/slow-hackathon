@@ -1,6 +1,7 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { Suspense } from "react"
+import { Sidebar } from "@/components/sidebar"
 
 async function AuthGate({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -15,7 +16,14 @@ export default function AuthenticatedLayout({
 }) {
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Loading...</div>}>
-      <AuthGate>{children}</AuthGate>
+      <AuthGate>
+        <div className="flex min-h-screen">
+          <Sidebar />
+          <main className="flex-1 overflow-auto">
+            {children}
+          </main>
+        </div>
+      </AuthGate>
     </Suspense>
   )
 }

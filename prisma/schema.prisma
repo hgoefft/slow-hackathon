@@ -24,6 +24,12 @@ model User {
   accounts Account[]
   sessions Session[]
 
+  contentPieces    ContentPiece[]
+  contentIdeas     ContentIdea[]
+  briefings        Briefing[]
+  gmailRefreshToken   String?
+  youtubeRefreshToken String?
+
   @@map("users")
 }
 
@@ -69,3 +75,152 @@ model VerificationToken {
 // Your app tables — add your own models below
 // After editing, run: npm run db:push
 // ═══════════════════════════════════════════════════════════════
+
+// A piece of content (may be repurposed across multiple platforms)
+model ContentPiece {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  title        String?
+  contentType  String   // "short_form_video" | "long_form_video" | "written" | "stories"
+  isRepurposed Boolean  @default(true)
+  ideaId       String?
+  idea         ContentIdea? @relation(fields: [ideaId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  platformPosts PlatformPost[]
+  attributes    ContentAttribute?
+
+  @@map("content_pieces")
+}
+
+// One post on one platform (a repurposed piece has one of these per platform)
+model PlatformPost {
+  id             String        @id @default(cuid())
+  contentPieceId String?
+  contentPiece   ContentPiece? @relation(fields: [contentPieceId], references: [id])
+
+  platform     String   // "tiktok" | "instagram" | "linkedin" | "youtube" | "substack"
+  externalId   String   // platform's own post ID
+  url          String?
+  thumbnailUrl String?
+  videoUrl     String?
+  caption      String?
+  publishedAt  DateTime
+
+  // Metrics (nullable — not all platforms have all metrics)
+  views          Int?
+  likes          Int?
+  comments       Int?
+  shares         Int?
+  saves          Int?
+  impressions    Int?
+  reach          Int?
+  engagement     Float?
+  completionRate Float?
+  watchTime      Int?    // seconds (YouTube)
+  clicks         Int?    // LinkedIn
+
+  rawData  Json?    // full API response stored for future use
+  syncedAt DateTime @default(now())
+
+  @@unique([platform, externalId])
+  @@map("platform_posts")
+}
+
+// AI-extracted attributes for a content piece (hook, style, transcript, etc.)
+model ContentAttribute {
+  id             String       @id @default(cuid())
+  contentPieceId String       @unique
+  contentPiece   ContentPiece @relation(fields: [contentPieceId], references: [id])
+
+  hookText           String?
+  hookStyle          String?   // "research_backed" | "uncomfortable_truth" | "personal_revelation" | "high_stakes" | "contrarian" | "shocking_stat"
+  substanceType      String?   // "framework" | "debate" | "hype_visibility" | "narrative"
+  editingStyle       String?   // "edited" | "raw" | "talking_head" | "b_roll"
+  energyLevel        String?   // "high" | "medium" | "low"
+  engagementTriggers String[]
+  hasResource        Boolean?
+  resourceType       String?
+  hasCta             Boolean?
+  ctaType            String?
+  transcript         String?
+  aiAnalysis         Json?     // full Claude analysis
+  // embedding column is managed outside Prisma via raw SQL (pgvector)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("content_attributes")
+}
+
+// Content idea log — raw ideas to audition before producing
+model ContentIdea {
+  id          String @id @default(cuid())
+  userId      String
+  user        User   @relation(fields: [userId], references: [id])
+
+  title       String
+  concept     String?
+  contentType String?  // "short_form_video" | "long_form_video" | "written"
+  effortLevel String?  // "low" | "medium" | "high"
+  urgency     String?  // "low" | "medium" | "high"
+  status      String   @default("raw") // "raw" | "auditioning" | "greenlit" | "in_production" | "live" | "analyzed"
+
+  auditResult   Json?    // full Claude audit output
+  predictedTier String?  // "low" | "medium" | "high"
+
+  contentPieces ContentPiece[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("content_ideas")
+}
+
+// Cached AI analysis of top vs bottom performers — what's working, rules, etc.
+model PerformanceInsight {
+  id          String   @id @default(cuid())
+  generatedAt DateTime @default(now())
+  periodDays  Int      @default(30)
+  platform    String?  // null = aggregate cross-platform, "tiktok" | "instagram" | "linkedin" | "youtube" = platform-specific
+  analysis    Json     // structured Claude output
+
+  @@map("performance_insights")
+}
+
+// Individual weekly briefing email — stored for cross-analysis
+model Briefing {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  weekOf    DateTime
+  subject   String?
+  fromEmail String?
+  rawEmail  String?
+  synthesis Json?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, weekOf])
+  @@map("briefings")
+}
+
+// App-level key/value config — used for storing refreshed API tokens, etc.
+model Config {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("config")
+}
+
+// Cross-briefing synthesis — patterns, themes, content ideas across multiple weeks
+model BriefingInsight {
+  id          String   @id @default(cuid())
+  generatedAt DateTime @default(now())
+  weekCount   Int
+  analysis    Json
+
+  @@map("briefing_insights")
+}
